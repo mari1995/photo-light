@@ -8,6 +8,7 @@
     <view 
       class="container" 
       :style="{ backgroundColor: currentColor }"
+      @tap="openPanel"
     ></view>
 
     <view 
@@ -186,6 +187,52 @@
       canvas-id="imageCanvas" 
       style="position: fixed; left: -999px; width: 100px; height: 100px;"
     ></canvas>
+
+    <view 
+      class="camera-btn glass-effect"
+      @tap.stop="toggleCamera"
+    >
+      <text class="iconfont">📷</text>
+    </view>
+
+    <view 
+      class="camera-preview" 
+      v-if="showCamera"
+      :style="{
+        left: `${cameraPosition.x}px`,
+        top: `${cameraPosition.y}px`
+      }"
+    >
+      <view 
+        class="camera-drag-handle"
+        @touchstart.stop="handleCameraDragStart"
+        @touchmove.stop="handleCameraDragMove"
+        @touchend.stop="handleCameraDragEnd"
+        @touchcancel.stop="handleCameraDragEnd"
+      ></view>
+
+      <camera
+        class="camera"
+        device-position="front"
+        flash="off"
+        @error="handleCameraError"
+      ></camera>
+      
+      <view class="camera-controls glass-effect">
+        <view 
+          class="capture-btn"
+          @tap.stop="takePhoto"
+        >
+          <view class="capture-btn-inner"></view>
+        </view>
+        <view 
+          class="close-btn"
+          @tap.stop="toggleCamera"
+        >
+          <text class="iconfont">✕</text>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -204,7 +251,7 @@ const presetColors = ref([
   },
   {
     name: '冷白光',
-    value: '#F0F8FF'  // 清爽的浅蓝��，适合清风格
+    value: '#F0F8FF'  // 爽的浅蓝，适合清风格
   },
   {
     name: '日光色',
@@ -220,7 +267,7 @@ const presetColors = ref([
   },
   {
     name: '珍珠光',
-    value: '#F5F5F5'  // 柔和的珍珠白，打造通透感
+    value: '#F5F5F5'  // 柔和白，打造通透感
   },
   {
     name: '奶咖光',
@@ -487,7 +534,7 @@ const isFavorite = computed(() => {
   return favoriteColors.value.some(color => color.value === colorToCheck)
 })
 
-// 修改切换收藏状态的方法
+// 修改切换收藏状态方法
 const toggleFavorite = (e) => {
   e.stopPropagation() // 阻止事件冒泡，防止触发面板关闭
   
@@ -669,6 +716,114 @@ const onShareTimeline = () => {
     }
   }
 }
+
+// 相机相关状态
+const showCamera = ref(false)
+const cameraContext = ref(null)
+const cameraDevicePosition = ref('front') // 'front' 或 'back'
+
+// 切换相机显示
+const toggleCamera = () => {
+  showCamera.value = !showCamera.value
+  if (showCamera.value) {
+    // 初始化相机上下文
+    nextTick(() => {
+      cameraContext.value = uni.createCameraContext()
+    })
+  }
+}
+
+// 切换前后摄像头
+const switchCamera = () => {
+  cameraDevicePosition.value = cameraDevicePosition.value === 'front' ? 'back' : 'front'
+}
+
+// 拍照
+const takePhoto = () => {
+  if (!cameraContext.value) {
+    cameraContext.value = uni.createCameraContext()
+  }
+  
+  cameraContext.value.takePhoto({
+    quality: 'high',
+    success: (res) => {
+      // 保存照片到相册
+      uni.saveImageToPhotosAlbum({
+        filePath: res.tempImagePath,
+        success: () => {
+          uni.showToast({
+            title: '已保存到相册',
+            icon: 'success',
+            duration: 1500
+          })
+        },
+        fail: () => {
+          uni.showToast({
+            title: '保存失败',
+            icon: 'none',
+            duration: 1500
+          })
+        }
+      })
+    },
+    fail: () => {
+      uni.showToast({
+        title: '拍照失败',
+        icon: 'none',
+        duration: 1500
+      })
+    }
+  })
+}
+
+// 处理相机错误
+const handleCameraError = (e) => {
+  uni.showToast({
+    title: '相机启动失败，请检查权限',
+    icon: 'none'
+  })
+  showCamera.value = false
+}
+
+// 添加相机预览位置状态
+const cameraPosition = ref({ x: 100, y: 100 }) // 初始位置
+const isDraggingCamera = ref(false)
+const dragOffset = ref({ x: 0, y: 0 })
+
+// 添加相机拖动处理函数
+const handleCameraDragStart = (e) => {
+  isDraggingCamera.value = true
+  const touch = e.touches[0]
+  dragOffset.value = {
+    x: touch.clientX - cameraPosition.value.x,
+    y: touch.clientY - cameraPosition.value.y
+  }
+}
+
+const handleCameraDragMove = (e) => {
+  if (!isDraggingCamera.value) return
+  
+  const touch = e.touches[0]
+  
+  // 计算新位置
+  let newX = touch.clientX - dragOffset.value.x
+  let newY = touch.clientY - dragOffset.value.y
+  
+  // 获取屏幕尺寸
+  const screenWidth = uni.getSystemInfoSync().windowWidth
+  const screenHeight = uni.getSystemInfoSync().windowHeight
+  
+  // 限制预览框不超出屏幕边界，修改为200px宽度
+  newX = Math.max(0, Math.min(newX, screenWidth - 200))
+  newY = Math.max(0, Math.min(newY, screenHeight - 200))
+  
+  // 更新位置
+  cameraPosition.value = { x: newX, y: newY }
+}
+
+const handleCameraDragEnd = () => {
+  isDraggingCamera.value = false
+}
 </script>
 
 <style scoped>
@@ -695,7 +850,7 @@ const onShareTimeline = () => {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 60vh;
+  height: 50vh;
   display: flex;
   flex-direction: column;
   background: #ffffff;
@@ -703,45 +858,87 @@ const onShareTimeline = () => {
   z-index: 100;
 }
 
-/* 修改控制面板位置 */
+/* 修改控制面板样式 */
 .control-panel {
-  order: 1;  /* 调整顺序，放在 tab-group 后面 */
+  position: absolute; /* 改为绝对定位 */
+  bottom: 0; /* 固定在底部 */
+  left: 0;
+  right: 0;
   padding: 12px 16px;
   background: #ffffff;
   border-top: 0.5px solid rgba(0, 0, 0, 0.05);
-  border-bottom: 0.5px solid rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: row;
-  gap: 16px;
+  gap: 12px;
   z-index: 3;
 }
 
-/* 修改内容区域样式 */
+/* 修改控制项样式 */
+.control-item {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px; /* 稍微增加间距 */
+  background: #f8f8f8;
+  border-radius: 10px;
+  padding: 8px 14px; /* 调整内边距 */
+}
+
+/* 修改控制标签样式 */
+.control-label {
+  font-size: 15px; /* 改为15px */
+  color: #666;
+  min-width: 30px;
+  font-weight: 500; /* 稍微加粗一点 */
+}
+
+/* 修改滑块样式 */
+.control-slider {
+  flex: 1;
+  height: 24px;
+  margin: 0;
+}
+
+/* 调整滑块组件样式 */
+.control-slider :deep(.uni-slider) {
+  margin: 0;
+}
+
+.control-slider :deep(.uni-slider-handle) {
+  width: 16px;
+  height: 16px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.control-slider :deep(.uni-slider-track) {
+  height: 2px;
+  background: #ff2442 !important;
+}
+
+/* 修改内容区域样式，为底部控制面板留出空间 */
 .preset-mode,
 .wheel-mode,
 .favorite-mode,
 .image-mode {
-  order: 2;  /* 放在控制面板后面 */
   flex: 1;
-  overflow: auto;
-  background: #ffffff;
+  overflow: hidden;
+  padding-bottom: 60px; /* 为底部控制面板留出空间 */
+  min-height: 0;
 }
 
-/* 修改面板头部样式 */
-.panel-header {
-  order: 0;  /* 保持在最上方 */
-  padding: 8px 16px 12px;
-  background: #ffffff;
-  border-bottom: 0.5px solid rgba(0, 0, 0, 0.05);
-}
-
-/* 调整内容区域的内边距 */
+/* 修改网格内容样式 */
 .color-grid {
+  height: 100%;
+  overflow-y: auto;
   padding: 16px;
+  padding-bottom: 80px; /* 确保内容不被控制面板遮挡 */
 }
 
+/* 修改色轮容器样式 */
 .wheel-mode {
-  padding-top: 16px;
+  padding: 12px 0;
 }
 
 .image-mode {
@@ -797,28 +994,55 @@ const onShareTimeline = () => {
 }
 
 /* 修改图片模式样式 */
-.image-content {
-  height: 160px;  /* 稍微减小高度 */
-  margin-bottom: 12px;
-}
-
-/* 修改控制项式 */
-.control-item {
-  flex: 1;
-  background: #f8f8f8;  /* 浅灰背景保留，因为是控制项 */
-  border-radius: 12px;
-  padding: 12px;
+.image-mode {
+  padding: 16px;
 }
 
 /* 修改面板头部样式 */
 .panel-header {
-  padding: 8px 16px 12px;
-  background: #ffffff;  /* 改为纯白背景 */
+  padding: 4px 16px 8px;
+  background: #ffffff;
   border-bottom: 0.5px solid rgba(0, 0, 0, 0.05);
-  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative; /* 添加相对定位 */
+  min-height: 70px; /* 确保有足够空间 */
+}
+
+/* 修改标签组样式 */
+.tab-group {
+  margin-top: 24px; /* 增加上边距，为收藏按钮留出空间 */
+  margin-bottom: 8px;
+  padding: 3px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 16px;
+  display: inline-flex;
+  gap: 3px;
+  width: auto;
+  min-width: 280px;
+  justify-content: center;
+}
+
+/* 修改标签项样式 */
+.tab-item {
+  flex: 1;
+  padding: 6px 16px; /* 调整内边距 */
+  font-size: 13px;
+  color: #666;
+  text-align: center;
+  border-radius: 14px;
+  transition: all 0.3s;
+  min-width: 60px; /* 设置最小宽度确保均匀分布 */
+}
+
+/* 拖动手柄样式 */
+.drag-handle {
+  width: 32px;
+  height: 3px;
+  background: #e5e5e5;
+  border-radius: 2px;
+  margin: 6px auto; /* 使用 auto 边距实现水平居中 */
 }
 
 /* 修改色轮区域样式 */
@@ -933,7 +1157,35 @@ const onShareTimeline = () => {
 
 /* 修改收藏按钮样式 */
 .favorite-btn {
-  background: #f8f8f8;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 102;
+  background: rgba(0, 0, 0, 0.03);
+  transition: all 0.3s;
+}
+
+.favorite-btn:active {
+  transform: scale(0.95);
+}
+
+/* 修改收藏图标样式 */
+.favorite-btn .iconfont {
+  font-size: 20px;
+  color: #666;
+  transition: all 0.3s;
+}
+
+.favorite-btn .icon-active {
+  color: #FFD700;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+  transform: scale(1.1);
 }
 
 /* 顶部拖动条 */
@@ -964,7 +1216,8 @@ const onShareTimeline = () => {
 /* 标签项样式 */
 .tab-item {
   position: relative;
-  padding: 12px 16px;
+  padding: 5px;
+  /* padding: 12px 0px; */
   font-size: 15px;
   color: #999;
   flex-shrink: 0;
@@ -1143,12 +1396,9 @@ const onShareTimeline = () => {
 
 .control-item {
   flex: 1;
-  background: #f8f8f8;
+  background: #f8f8f8;  /* 浅灰背景保留，因为是控制项 */
   border-radius: 12px;
   padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .control-label {
@@ -1500,5 +1750,120 @@ const onShareTimeline = () => {
 .reupload-btn .iconfont {
   font-size: 18px;
   color: #333;
+}
+
+/* 相机按钮样式 */
+.camera-btn {
+  position: fixed;
+  top: 40px;
+  left: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s;
+}
+
+.camera-btn:active {
+  transform: scale(0.95);
+}
+
+/* 相机预览容器 */
+.camera-preview {
+  position: fixed;
+  width: 200px;
+  height: 200px;
+  border-radius: 16px;
+  overflow: hidden;
+  z-index: 99;
+  background: #000;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* 修改拖动手柄样式 */
+.camera-drag-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 16px;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 2;
+}
+
+/* 调整相机视图大小 */
+.camera {
+  width: 100%;
+  height: calc(100% - 16px);
+  margin-top: 16px;
+}
+
+/* 修改控制按钮组样式 */
+.camera-controls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0 16px;
+}
+
+/* 修改拍照按钮样式 */
+.capture-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.capture-btn-inner {
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* 修改关闭按钮样式 */
+.close-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-btn .iconfont {
+  color: #333;
+  font-size: 14px;
+}
+
+/* 添加遮罩层 */
+.camera-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 98;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
 }
 </style>

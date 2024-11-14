@@ -1,0 +1,24 @@
+{
+  "app-plus": {
+    "modules": {
+      "Camera": {}
+    },
+    "permission": {
+      "Camera": {
+        "description": "用于自拍预览功能"
+      }
+    }
+  },
+  "mp-weixin": {
+    "permission": {
+      "scope.camera": {
+        "desc": "用于自拍预览功能"
+      }
+    }
+  },
+  "permissions": {
+    "Camera": {
+      "description": "用于自拍预览功能"
+    }
+  }
+} 
