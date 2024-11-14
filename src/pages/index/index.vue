@@ -1,15 +1,13 @@
 <template>
   <view class="wrapper">
     <view 
+      class="background-layer"
+      @tap="togglePanel"
+    ></view>
+    
+    <view 
       class="container" 
       :style="{ backgroundColor: currentColor }"
-      @tap="openPanel"
-    ></view>
-
-    <view 
-      v-if="showPanel" 
-      class="mask" 
-      @tap="closePanel"
     ></view>
 
     <view 
@@ -19,29 +17,36 @@
       @touchmove.stop.prevent
     >
       <view 
-        class="favorite-btn glass-effect"
+        class="favorite-btn"
         @tap.stop="toggleFavorite"
       >
         <text class="iconfont" :class="{ 'icon-active': isFavorite }">★</text>
       </view>
 
-      <view class="panel-header glass-effect">
+      <view class="panel-header">
+        <view class="drag-handle"></view>
+        
         <view class="tab-group">
           <view 
-            class="tab-item glass-effect" 
+            class="tab-item" 
             :class="{ active: mode === 'preset' }"
             @tap="mode = 'preset'"
           >预设色</view>
           <view 
-            class="tab-item glass-effect" 
+            class="tab-item" 
             :class="{ active: mode === 'wheel' }"
             @tap="mode = 'wheel'"
           >色轮</view>
           <view 
-            class="tab-item glass-effect" 
+            class="tab-item" 
             :class="{ active: mode === 'favorite' }"
             @tap="mode = 'favorite'"
           >收藏</view>
+          <view 
+            class="tab-item" 
+            :class="{ active: mode === 'image' }"
+            @tap="mode = 'image'"
+          >取图</view>
         </view>
       </view>
 
@@ -102,7 +107,7 @@
               ></view>
               <text class="color-name">{{ color.name }}</text>
               <view 
-                class="delete-btn glass-effect"
+                class="delete-btn"
                 @tap.stop="deleteFavoriteColor(index)"
               >
                 <text class="delete-icon">×</text>
@@ -112,7 +117,38 @@
         </scroll-view>
       </view>
 
-      <view class="control-panel glass-effect">
+      <view v-else-if="mode === 'image'" class="image-mode">
+        <view class="image-content">
+          <view class="image-container">
+            <image 
+              v-if="selectedImage"
+              :src="selectedImage" 
+              class="preview-image"
+              mode="aspectFit"
+            />
+            <view v-else class="upload-placeholder" @tap="selectImage">
+              <text class="iconfont">+</text>
+              <text>点击选择图片</text>
+            </view>
+            <view v-if="selectedImage" class="reupload-btn" @tap="selectImage">
+              <text class="iconfont">↺</text>
+            </view>
+          </view>
+          
+          <view v-if="selectedImage" class="image-controls">
+            <view class="detected-color">
+              <view 
+                class="color-preview" 
+                :style="{ backgroundColor: detectedColor }"
+              ></view>
+              <text class="color-value">{{ detectedColor }}</text>
+            </view>
+            <button class="pick-btn" @tap="selectImage">重新选择</button>
+          </view>
+        </view>
+      </view>
+
+      <view class="control-panel">
         <view class="control-item">
           <text class="control-label">亮度</text>
           <slider
@@ -145,6 +181,11 @@
         </view>
       </view>
     </view>
+
+    <canvas 
+      canvas-id="imageCanvas" 
+      style="position: fixed; left: -999px; width: 100px; height: 100px;"
+    ></canvas>
   </view>
 </template>
 
@@ -163,11 +204,11 @@ const presetColors = ref([
   },
   {
     name: '冷白光',
-    value: '#F0F8FF'  // 清爽的浅蓝白，适合清新风格
+    value: '#F0F8FF'  // 清爽的浅蓝��，适合清风格
   },
   {
     name: '日光色',
-    value: '#FFF5E6'  // 自然的日光色，最接近自然光
+    value: '#FFF5E6'  // 然的日光色，最接近自然光
   },
   {
     name: '柔粉光',
@@ -210,6 +251,8 @@ const currentColor = computed(() => {
   } else if (mode.value === 'favorite') {
     // 如果是收藏模式，直接返回 wheelColor
     return wheelColor.value
+  } else if (mode.value === 'image') {
+    return detectedColor.value
   }
   return wheelColor.value
 })
@@ -221,7 +264,7 @@ const wheelRadius = ref(wheelSize / 2)
 const wheelCenterX = ref(wheelSize / 2)
 const wheelCenterY = ref(wheelSize / 2)
 
-// 初始化指针位置在中心
+// 初化指针位置在中心
 const pointerPosition = ref({
   x: wheelSize / 2,
   y: wheelSize / 2
@@ -264,7 +307,7 @@ const handleWheelTouch = (e) => {
   }).exec()
 }
 
-// ��理拾色器触摸
+// 理拾色器触摸
 const handlePickerTouch = (e) => {
   e.stopPropagation()
   handleWheelTouch(e)
@@ -309,26 +352,23 @@ const drawColorWheel = () => {
   ctx.draw(false)
 }
 
-// 修改颜色深浅变化处理
+// 修改颜色深浅变处理
 const handleColorValueChange = (e) => {
   const value = e.detail.value
   colorValue.value = value
   
-  // 根据当前模式处理颜色深浅
+  // 根据当前模式立即更新颜色
   if (mode.value === 'preset') {
-    // 预设色模式：调整当前选中颜色的深浅
     const color = tinycolor(presetColors.value[currentColorIndex.value].value)
     const hsv = color.toHsv()
-    // 保持色相和饱和度不变，只调整明度
     const newColor = tinycolor({ h: hsv.h, s: hsv.s, v: value / 100 })
     presetColors.value[currentColorIndex.value].value = newColor.toHexString()
+    wheelColor.value = newColor.toHexString()  // 直接更新当前颜色
   } else {
-    // 色轮模式：调整当前色轮颜色的深浅
     const color = tinycolor(wheelColor.value)
     const hsv = color.toHsv()
-    // 保持色相和饱和度不变，只调整明度
     const newColor = tinycolor({ h: hsv.h, s: hsv.s, v: value / 100 })
-    wheelColor.value = newColor.toHexString()
+    wheelColor.value = newColor.toHexString()  // 直接更新当前颜色
   }
 }
 
@@ -357,11 +397,12 @@ const handleBrightnessChange = (e) => {
   })
 }
 
-// 择颜色
+// 修改预设色选择方法
 const selectColor = (index) => {
   currentColorIndex.value = index
-  // 使用颜色值
+  // 直接使用选中的颜色值更新当前颜色
   const color = presetColors.value[index].value
+  wheelColor.value = color  // 更新 wheelColor
 }
 
 // 修改初始化逻辑
@@ -373,7 +414,7 @@ onMounted(() => {
     }
   })
 
-  // 如果初始模式是色轮，则绘制色轮
+  // 默认打开面板时初始化色轮
   if (mode.value === 'wheel') {
     nextTick(() => {
       setTimeout(drawColorWheel, 100)
@@ -387,52 +428,57 @@ onMounted(() => {
   }
 })
 
-// 修改面板控制逻辑
-const showPanel = ref(false)  // 将默认值改为 false
+// 修改面板控制逻辑，默认显示
+const showPanel = ref(true)
 
-// 添加打开面板的方法
-const openPanel = () => {
-  showPanel.value = true
-}
-
-// 监听面板显示状态
-watch(showPanel, (newValue) => {
-  if (newValue) {
-    // 每次显示面板时重置为预设色模式
-    mode.value = 'preset'
-    // 重置色轮相关状态
-    wheelColor.value = '#FFFFFF'
-    pointerPosition.value = {
-      x: wheelSize / 2,
-      y: wheelSize / 2
-    }
+// 修改面板开关方法
+const togglePanel = () => {
+  showPanel.value = !showPanel.value
+  
+  // 如果是打开面板，并且当前是色轮模式，重新初始化色轮
+  if (showPanel.value && mode.value === 'wheel') {
+    nextTick(() => {
+      setTimeout(() => {
+        drawColorWheel()
+        // 恢复之前选择的颜色位置
+        const color = tinycolor(wheelColor.value)
+        const hsv = color.toHsv()
+        const angle = hsv.h * Math.PI / 180
+        const distance = hsv.s * wheelRadius.value / 100
+        
+        // 更新指针位置
+        pointerPosition.value = {
+          x: wheelCenterX.value + Math.cos(angle) * distance,
+          y: wheelCenterY.value + Math.sin(angle) * distance
+        }
+      }, 50)
+    })
   }
-})
+}
 
 // 监听模式变化
 watch(mode, (newMode) => {
   if (newMode === 'wheel' && showPanel.value) {
-    // 切换到色轮模式时重新绘制
     nextTick(() => {
       setTimeout(() => {
         drawColorWheel()
+        // 恢复之前选择的颜色位置
+        const color = tinycolor(wheelColor.value)
+        const hsv = color.toHsv()
+        const angle = hsv.h * Math.PI / 180
+        const distance = hsv.s * wheelRadius.value / 100
+        
+        // 更新指针位置
+        pointerPosition.value = {
+          x: wheelCenterX.value + Math.cos(angle) * distance,
+          y: wheelCenterY.value + Math.sin(angle) * distance
+        }
       }, 50)
     })
   }
 })
 
-// 关闭面板
-const closePanel = () => {
-  showPanel.value = false
-  // 重置色轮相关状态
-  wheelColor.value = '#FFFFFF'
-  pointerPosition.value = {
-    x: wheelSize / 2,
-    y: wheelSize / 2
-  }
-}
-
-// 收藏颜色列表
+// 收藏色列表
 const favoriteColors = ref([])
 
 // 判断当前颜色是否已收藏
@@ -493,7 +539,7 @@ const toggleFavorite = (e) => {
 const deleteFavoriteColor = (index) => {
   uni.showModal({
     title: '删除收藏',
-    content: '确定要删除这个收藏的颜色吗？',
+    content: '确定要删除这个收的颜色吗？',
     success: (res) => {
       if (res.confirm) {
         favoriteColors.value.splice(index, 1)
@@ -508,192 +554,540 @@ const deleteFavoriteColor = (index) => {
   })
 }
 
-// 修改选择收藏颜色的方法
+// 修改收藏色选择方法
 const selectFavoriteColor = (color) => {
   // 更新当前显示的颜色
   wheelColor.value = color.value
   
-  // 更新当前显示的颜色和深浅值
+  // 更新深浅值
   const colorObj = tinycolor(color.value)
   const hsv = colorObj.toHsv()
   colorValue.value = Math.round(hsv.v * 100)
-  
-  // 更新背景颜色
-  if (mode.value === 'favorite') {
-    // 直接应用颜色，不关闭面板
-    const newColor = tinycolor(color.value)
-    wheelColor.value = newColor.toHexString()
+}
+
+// 图片相关状态
+const selectedImage = ref('')
+const detectedColor = ref('')
+
+// 在 script setup 中添加获取图片颜色的函数
+const getImageColor = (imagePath) => {
+  return new Promise((resolve, reject) => {
+    const ctx = uni.createCanvasContext('imageCanvas')
     
-    // 如果是在色轮模式下，更新指针位置
-    if (mode.value === 'wheel') {
-      const hsv = newColor.toHsv()
-      const angle = hsv.h * Math.PI / 180
-      const distance = hsv.s * wheelRadius.value / 100
-      
-      pointerPosition.value = {
-        x: wheelCenterX.value + Math.cos(angle) * distance,
-        y: wheelCenterY.value + Math.sin(angle) * distance
+    // 在画布中绘制图片
+    ctx.drawImage(imagePath, 0, 0, 100, 100)  // 缩小寸以提高性能
+    ctx.draw(false, () => {
+      // 获取中心点的颜色
+      uni.canvasGetImageData({
+        canvasId: 'imageCanvas',
+        x: 45,  // 取中心点附近的位置
+        y: 45,
+        width: 10,
+        height: 10,
+        success: (res) => {
+          // 计算平均颜色
+          let r = 0, g = 0, b = 0
+          const data = res.data
+          const total = data.length / 4
+          
+          for (let i = 0; i < data.length; i += 4) {
+            r += data[i]
+            g += data[i + 1]
+            b += data[i + 2]
+          }
+          
+          r = Math.round(r / total)
+          g = Math.round(g / total)
+          b = Math.round(b / total)
+          
+          resolve(`rgb(${r}, ${g}, ${b})`)
+        },
+        fail: reject
+      })
+    })
+  })
+}
+
+// 修改图片颜色提取方法
+const selectImage = () => {
+  uni.chooseImage({
+    count: 1,
+    sourceType: ['album', 'camera'],
+    success: async (res) => {
+      selectedImage.value = res.tempFilePaths[0]
+      try {
+        const color = await getImageColor(res.tempFilePaths[0])
+        detectedColor.value = color
+        // 直接更新当前颜色
+        wheelColor.value = tinycolor(color).toHexString()
+      } catch (error) {
+        uni.showToast({
+          title: '颜色提取失败',
+          icon: 'none'
+        })
       }
+    }
+  })
+}
+
+// 分享给朋友
+const onShareAppMessage = () => {
+  return {
+    title: '智能补光神器',
+    path: '/pages/index/index',
+    success(res) {
+      uni.showToast({
+        title: '分享成功',
+        icon: 'success'
+      })
+    },
+    fail(res) {
+      uni.showToast({
+        title: '分享失败',
+        icon: 'none'
+      })
+    }
+  }
+}
+
+// 分享到朋友圈
+const onShareTimeline = () => {
+  return {
+    title: '智能补光神器',
+    query: '',
+    success(res) {
+      uni.showToast({
+        title: '分享成功',
+        icon: 'success'
+      })
+    },
+    fail(res) {
+      uni.showToast({
+        title: '分享失败',
+        icon: 'none'
+      })
     }
   }
 }
 </script>
 
 <style scoped>
-/* 添加遮罩层样式 */
-.wrapper {
-  width: 100%;
-  height: 100vh;
+.background-layer {
   position: fixed;
-  left: 0;
   top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99;  /* 确保在 container 之上，panel 之下 */
 }
 
 .container {
-  width: 100%;
-  height: 100vh;
-  transition: background-color 0.3s;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
 }
 
-/* 修改毛玻璃效果 - 使用蓝色调 */
-.glass-effect {
-  background: rgba(64, 64, 64, 0.25);  /* 更深的灰色 */
-  backdrop-filter: blur(25px) saturate(180%);
-  -webkit-backdrop-filter: blur(25px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-/* 修改面板样式 */
 .color-panel {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 50vh;
-  z-index: 101;
-  border-radius: 24px 24px 0 0;
+  height: 60vh;
   display: flex;
   flex-direction: column;
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  /* background: rgba(64, 64, 64, 0.25);   */
-  backdrop-filter: blur(25px) saturate(180%);
-  -webkit-backdrop-filter: blur(25px) saturate(180%);
+  background: #ffffff;
+  border-radius: 20px 20px 0 0;
+  z-index: 100;
 }
 
-/* 面板头部样式 */
+/* 修改控制面板位置 */
+.control-panel {
+  order: 1;  /* 调整顺序，放在 tab-group 后面 */
+  padding: 12px 16px;
+  background: #ffffff;
+  border-top: 0.5px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  z-index: 3;
+}
+
+/* 修改内容区域样式 */
+.preset-mode,
+.wheel-mode,
+.favorite-mode,
+.image-mode {
+  order: 2;  /* 放在控制面板后面 */
+  flex: 1;
+  overflow: auto;
+  background: #ffffff;
+}
+
+/* 修改面板头部样式 */
 .panel-header {
-  padding: 4px 16px 8px; /* 增加左右内边距 */
+  order: 0;  /* 保持在最上方 */
+  padding: 8px 16px 12px;
+  background: #ffffff;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.05);
+}
+
+/* 调整内容区域的内边距 */
+.color-grid {
+  padding: 16px;
+}
+
+.wheel-mode {
+  padding-top: 16px;
+}
+
+.image-mode {
+  padding: 16px;
+}
+
+/* 移除所有模式的灰色背景 */
+.preset-mode,
+.wheel-mode,
+.favorite-mode,
+.image-mode {
+  background: #ffffff;
+  flex: 1;
+  overflow: hidden;
+  padding-bottom: 0;  /* 移除底部内边距 */
+  min-height: 0;  /* 允许内容区域被压缩 */
+}
+
+/* 修改控制面板样式 */
+.control-panel {
+  padding: 16px;
+  background: #ffffff;
+  border-top: 0.5px solid rgba(0, 0, 0, 0.05);
+  margin-top: 0;  /* 移除上边距 */
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  position: relative;  /* 添加相对定位 */
+  z-index: 3;  /* 确保在其他内容之上 */
+}
+
+/* 修改各个模式的内容区域样式，减小高度给控制面板留出空间 */
+.preset-mode,
+.wheel-mode,
+.favorite-mode,
+.image-mode {
+  flex: 1;
+  overflow: hidden;
+  padding-bottom: 0;
+  min-height: 0;
+  max-height: calc(100% - 140px);  /* 减小内容区域高度，给控制面板留出空间 */
+}
+
+/* 修改网格内容高度 */
+.color-grid-content {
+  padding: 16px;
+  height: auto;  /* 改为自适应高度 */
+}
+
+/* 修改色轮容器样式 */
+.wheel-mode {
+  padding: 12px 0;
+}
+
+/* 修改图片模式样式 */
+.image-content {
+  height: 160px;  /* 稍微减小高度 */
+  margin-bottom: 12px;
+}
+
+/* 修改控制项式 */
+.control-item {
+  flex: 1;
+  background: #f8f8f8;  /* 浅灰背景保留，因为是控制项 */
+  border-radius: 12px;
+  padding: 12px;
+}
+
+/* 修改面板头部样式 */
+.panel-header {
+  padding: 8px 16px 12px;
+  background: #ffffff;  /* 改为纯白背景 */
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.05);
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* 修改色轮区域样式 */
+.wheel-mode {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 25px;
+  padding: 12px 0;  /* 减小内边距 */
+  background: #ffffff;  /* 改为白色背景 */
+}
+
+/* 修改收藏模样式 */
+.favorite-mode {
+  flex: 1;
+  overflow: hidden;
+  background: #ffffff;  /* 改为纯白背景 */
+}
+
+/* 修改图片模式样式 */
+.image-mode {
+  flex: 1;
+  padding: 16px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.image-content {
+  display: flex;
+  flex-direction: row;  /* 改为横向布局 */
+  gap: 16px;
+  padding: 16px;
+  height: 180px;  /* 固定高度 */
+}
+
+.image-container {
+  flex: 1;  /* 占据左侧空间 */
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f8f8f8;
+  border: 1px dashed #e5e5e5;
+  transition: all 0.3s;
+  position: relative;
+}
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 修改颜色提取区域样式 */
+.image-controls {
+  width: 120px;  /* 固定宽度 */
+  display: flex;
+  flex-direction: column;  /* 改为纵向布局 */
+  gap: 12px;
+  justify-content: center;
+}
+
+.detected-color {
+  display: flex;
+  flex-direction: column;  /* 改为纵向布局 */
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f8f8f8;
+}
+
+.detected-color .color-preview {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.detected-color .color-value {
+  color: #333;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* 修改重新选择按钮样式 */
+.pick-btn {
+  height: 36px;
+  width: 100%;
+  font-size: 14px;
+  background: #ff2442;
+  color: #fff;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 修改颜色预览样式 */
+.color-preview {
+  border: 1px solid rgba(0, 0, 0, 0.08);  /* 更淡的边框 */
+}
+
+/* 修改标签组样式 */
+.tab-group {
+  background: #ffffff;
+}
+
+/* 修改收藏按钮样式 */
+.favorite-btn {
+  background: #f8f8f8;
 }
 
 /* 顶部拖动条 */
-.panel-header::after {
-  content: '';
-  width: 32px;
+.drag-handle {
+  width: 40px;
   height: 4px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  margin-top: 8px;
+  background: #e5e5e5;
+  border-radius: 2px;
+  margin: 8px auto;
 }
 
-/* 修改标签组样式，使其更圆润 */
+/* 标签组样式 */
 .tab-group {
-  margin-top: 8px;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 20px; /* 增加圆角 */
-  display: inline-flex;
-  gap: 4px;
-  width: auto;
-  min-width: 280px; /* 确保最小宽度 */
-}
-
-.tab-item {
-  padding: 8px 16px; /* 调整内边距 */
-  font-size: 13px;
-  flex: 1;
-  text-align: center;
-  border-radius: 16px; /* 增加圆角 */
-  color: rgba(255, 255, 255, 0.9);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-.tab-item.active {
-  background: rgba(255, 255, 255, 0.95);
-  color: rgba(64, 64, 64, 0.9);
-  font-weight: 500;
-  transform: scale(1.02); /* 添加轻微的放大效果 */
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); /* 添加轻微阴影 */
-}
-
-/* 添加悬停效果 */
-.tab-item:not(.active):hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-/* 确保标签组在面板头部居中 */
-.panel-header {
-  padding: 4px 16px 8px; /* 增加左右内边距 */
-  position: relative;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0 12px;
+  margin: 8px 0 0 0;
+  position: relative;
+  white-space: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
 }
 
-/* 预设色网格 */
+.tab-group::-webkit-scrollbar {
+  display: none; /* Chrome Safari */
+}
+
+/* 标签项样式 */
+.tab-item {
+  position: relative;
+  padding: 12px 16px;
+  font-size: 15px;
+  color: #999;
+  flex-shrink: 0;
+  transition: all 0.3s;
+}
+
+/* 活动标签样式 */
+.tab-item.active {
+  color: #000;
+  font-weight: 600;
+}
+
+/* 活动标签底部指示器 */
+.tab-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 16px;
+  right: 16px;
+  height: 3px;
+  background: #ff2442;
+  border-radius: 3px;
+}
+
+/* 移除玻璃拟态效果 */
+.glass-effect {
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+}
+
+/* 统一网格布局样式 */
 .color-grid {
   flex: 1;
   overflow: hidden;
+  padding: 20px;
 }
 
 .color-grid-content {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 12px;
-  height: 200px;
-  padding: 15px;
-  position: relative;
+  grid-template-columns: repeat(4, 1fr);  /* 固定4列 */
+  gap: 20px;  /* 统一间距 */
+  padding: 0 12px;
 }
 
+/* 统一网格项样式 */
 .grid-item {
   position: relative;
-  aspect-ratio: 1;
-  width: 90%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 70px;  /* 限制最大宽度 */
   margin: 0 auto;
 }
 
+/* 统一颜色预览样式 */
 .color-preview {
   width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  padding-bottom: 100%;  /* 保持正方形比例 */
+  position: relative;
+  border-radius: 12px;  /* 统一使用圆角矩形 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s;
 }
 
+/* 统一颜色名称样式 */
+.color-name {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 4px;
+}
+
+/* 统一激活状态样式 */
 .grid-item.active .color-preview {
   transform: scale(1.05);
-  border-color: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.color-name {
+.grid-item.active .color-name {
+  color: #333;
+  font-weight: 500;
+}
+
+/* 收藏模式特有的删除按钮样式 */
+.favorite-mode .grid-item {
+  position: relative;
+}
+
+.delete-btn {
   position: absolute;
-  bottom: -18px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.9);
-  white-space: nowrap;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.delete-icon {
+  color: #ff2442;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* 空状态提示 */
+.empty-state {
   text-align: center;
+  padding: 40px 0;
+  color: #999;
+  font-size: 14px;
 }
 
 /* 色轮区域 */
@@ -704,10 +1098,7 @@ const selectFavoriteColor = (color) => {
   align-items: center;
   justify-content: center;
   gap: 25px;
-  padding: 15px 0;
-  background: rgba(64, 64, 64, 0.25);  /* 统一背景色 */
-  backdrop-filter: blur(25px) saturate(180%);
-  -webkit-backdrop-filter: blur(25px) saturate(180%);
+  padding: 12px 0;  /* 减小内边距 */
 }
 
 .wheel-container {
@@ -740,19 +1131,19 @@ const selectFavoriteColor = (color) => {
 /* 修改控制面板样式 */
 .control-panel {
   padding: 16px;
-  background: rgba(64, 64, 64, 0.3);
-  backdrop-filter: blur(25px) saturate(180%);
-  -webkit-backdrop-filter: blur(25px) saturate(180%);
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  margin-top: auto;
+  background: #ffffff;
+  border-top: 0.5px solid rgba(0, 0, 0, 0.05);
+  margin-top: 0;  /* 移除上边距 */
   display: flex;
   flex-direction: row;
-  gap: 16px;
+  gap: 20px;
+  position: relative;  /* 添加相对定位 */
+  z-index: 3;  /* 确保在其他内容之上 */
 }
 
 .control-item {
   flex: 1;
-  background: rgba(255, 255, 255, 0.1);
+  background: #f8f8f8;
   border-radius: 12px;
   padding: 12px;
   display: flex;
@@ -761,17 +1152,30 @@ const selectFavoriteColor = (color) => {
 }
 
 .control-label {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  color: #333;
   text-align: center;
-  letter-spacing: 0.5px;
   font-weight: 500;
 }
 
 /* 修改滑块样式 */
 .control-slider {
   margin: 0;
-  flex: 1;
+}
+
+.control-slider :deep(.uni-slider) {
+  margin: 0;
+}
+
+.control-slider :deep(.uni-slider-handle) {
+  width: 24px;
+  height: 24px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.control-slider :deep(.uni-slider-track) {
+  background: #ff2442 !important;  /* 强制使用小红书红色 */
 }
 
 /* 修改面板整体样式 - 使用灰色调 */
@@ -782,19 +1186,19 @@ const selectFavoriteColor = (color) => {
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-/* 修改标签激活状态样式 */
+/* 改标签激活状态样式 */
 .tab-item.active {
   background: rgba(255, 255, 255, 0.9);
   color: rgba(64, 64, 64, 0.9);
   font-weight: 500;
 }
 
-/* 修改滑块轨道样式 */
+/* 改滑块轨道样式 */
 .control-slider :deep(.uni-slider) {
   margin: 0;
 }
 
-/* 动画效果 */
+/* 动画效 */
 @keyframes slideUp {
   from {
     transform: translateY(100%);
@@ -806,36 +1210,63 @@ const selectFavoriteColor = (color) => {
   }
 }
 
-/* 添加遮罩层样式 */
-.mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.2);  /* 稍深的遮罩 */
-  z-index: 100;
-}
-
-/* 确保面板在遮罩层之上 */
-.color-panel {
-  z-index: 101;
-  /* ... 其他面板样式保持不变 ... */
-}
-
-/* 统一背景色变量 */
-.panel-header,
+/* 确保其他相关样式使用纯色 */
 .preset-mode,
 .wheel-mode {
-  background: rgba(64, 64, 64, 0.25);  /* 统一使用相同的背景色 */
-  backdrop-filter: blur(25px) saturate(180%);
-  -webkit-backdrop-filter: blur(25px) saturate(180%);
+  background: #ffffff;
 }
 
 /* 预设色模式 */
 .preset-mode {
   flex: 1;
   overflow: hidden;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.color-grid {
+  height: 100%;
+  overflow-y: auto;  /* 允许垂直滚动 */
+  padding: 0;
+}
+
+.color-grid-content {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);  /* 保持4列 */
+  gap: 16px;  /* 减小间距 */
+  padding: 16px;
+  height: auto;  /* 移除固定高度，改为自适应 */
+}
+
+.grid-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 65px;  /* 稍微减小最大宽度 */
+  margin: 0 auto;
+}
+
+.color-preview {
+  width: 100%;
+  padding-bottom: 100%;  /* 保持正方形比例 */
+  position: relative;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s;
+}
+
+.color-name {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 4px;
 }
 
 /* 色轮模式 */
@@ -846,60 +1277,47 @@ const selectFavoriteColor = (color) => {
   align-items: center;
   justify-content: center;
   gap: 25px;
-  padding: 15px 0;
+  padding: 12px 0;  /* 减小内边距 */
 }
 
 /* 收藏按钮样式 */
 .favorite-btn {
   position: absolute;
-  top: 60px; /* 调整到标签栏下方 */
+  top: 16px;
   right: 16px;
-  width: 36px; /* 稍微调小一点 */
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 102;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.1); /* 添加轻微背景 */
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #f8f8f8;
+  border: none;
+  transition: all 0.2s;
 }
 
-.favorite-btn:active {
-  transform: scale(0.95);
-}
-
-/* 调整图标样式 */
 .iconfont {
-  font-size: 20px; /* 稍微调小图标 */
-  color: rgba(255, 255, 255, 0.8);
-  transition: all 0.3s;
+  font-size: 18px;
+  color: #666;
 }
 
-/* 优化激活状态样式 */
 .icon-active {
-  color: #FFD700;
-  text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+  color: #ff2442;
+  text-shadow: none;
   transform: scale(1.1);
 }
 
 /* 添加悬停效果 */
 .favorite-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: #f5f5f5;  /* 改为浅灰色 */
 }
 
 /* 确保收藏模式下的网格样式与预设模式一致 */
 .favorite-mode {
   flex: 1;
   overflow: hidden;
-  background: rgba(64, 64, 64, 0.25);
-  backdrop-filter: blur(25px) saturate(180%);
-  -webkit-backdrop-filter: blur(25px) saturate(180%);
+  background: #ffffff;  /* 改为纯白背景 */
 }
 
 /* 添加删除按钮样式 */
@@ -913,10 +1331,11 @@ const selectFavoriteColor = (color) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.9);
+  background: #ffffff;
   cursor: pointer;
   z-index: 2;
   transition: all 0.2s;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .delete-btn:active {
@@ -933,14 +1352,153 @@ const selectFavoriteColor = (color) => {
 /* 调整网格项样式以适应删除按钮 */
 .grid-item {
   position: relative;
-  padding-top: 8px;
-  padding-right: 8px;
 }
 
-/* 调整收藏图标的激活状态样式 */
+/* 调整收藏标的激活状态样式 */
 .icon-active {
   color: #FFD700;
   text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
   transform: scale(1.1);
+}
+
+/* 修改图片模式相关样式 */
+.image-mode {
+  flex: 1;
+  padding: 16px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.image-content {
+  display: flex;
+  flex-direction: row;  /* 改为横向布局 */
+  gap: 16px;
+  padding: 16px;
+  height: 180px;  /* 固定高度 */
+}
+
+.image-container {
+  flex: 1;  /* 占据左侧空间 */
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f8f8f8;
+  border: 1px dashed #e5e5e5;
+  transition: all 0.3s;
+  position: relative;
+}
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.upload-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  transition: all 0.3s;
+}
+
+.upload-placeholder:active {
+  background: #f5f5f5;
+}
+
+.upload-placeholder .iconfont {
+  font-size: 28px;
+  color: #999;
+  margin-bottom: 4px;
+}
+
+.upload-placeholder text:not(.iconfont) {
+  color: #666;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 修改颜色提取区域样式 */
+.image-controls {
+  width: 120px;  /* 固定宽度 */
+  display: flex;
+  flex-direction: column;  /* 改为纵向布局 */
+  gap: 12px;
+  justify-content: center;
+}
+
+.detected-color {
+  display: flex;
+  flex-direction: column;  /* 改为纵向布局 */
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f8f8f8;
+}
+
+.detected-color .color-preview {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.detected-color .color-value {
+  color: #333;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* 修改重新选择按钮样式 */
+.pick-btn {
+  height: 36px;
+  width: 100%;
+  font-size: 14px;
+  background: #ff2442;
+  color: #fff;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pick-btn:active {
+  opacity: 0.9;
+}
+
+.pick-btn::before {
+  content: '';  /* 移除箭头图标 */
+}
+
+.reupload-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+  z-index: 2;
+}
+
+.reupload-btn:active {
+  transform: scale(0.95);
+}
+
+.reupload-btn .iconfont {
+  font-size: 18px;
+  color: #333;
 }
 </style>
